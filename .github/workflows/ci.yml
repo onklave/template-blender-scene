@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # Fast, Blender-free. Catches the breakages that look fine locally: a syntax
+  # error in the build script, parameters that no longer parse, or an output
+  # path renamed out from under the review loop.
+  contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Contract tests
+        run: python3 -m unittest discover -s test -v
+
+  # The real test: does the scene actually render?
+  #
+  # Asserts the output FILES exist rather than trusting the exit code, because
+  # Blender can crash mid-render — writing blender.crash.txt — and still exit 0.
+  # An exit-code-only check calls that a pass and ships a repo whose previews
+  # never appear in review.
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Downloaded under the exact filename the published .sha256 names, so the
+      # checksum line verifies as-is. Pinned: an unpinned "latest" would make CI
+      # fail on a Blender release rather than on a change to this repo.
+      - name: Install Blender
+        env:
+          BLENDER_VERSION: 4.5.3
+          BLENDER_SERIES: '4.5'
+        run: |
+          set -euo pipefail
+          cd /tmp
+          ARCHIVE="blender-${BLENDER_VERSION}-linux-x64.tar.xz"
+          curl -fsSL -O "https://download.blender.org/release/Blender${BLENDER_SERIES}/${ARCHIVE}"
+          curl -fsSL -O "https://download.blender.org/release/Blender${BLENDER_SERIES}/blender-${BLENDER_VERSION}.sha256"
+          grep " ${ARCHIVE}\$" "blender-${BLENDER_VERSION}.sha256" > check.sha256
+          test -s check.sha256
+          sha256sum -c check.sha256
+          sudo mkdir -p /opt/blender
+          sudo tar -xJf "${ARCHIVE}" -C /opt/blender --strip-components=1
+          echo /opt/blender >> "$GITHUB_PATH"
+
+      # EEVEE is a GL renderer and needs these; Blender bundles everything else.
+      # Without libEGL it starts, crashes during the render, and exits 0.
+      - name: Install runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libx11-6 libxi6 libxxf86vm1 libxfixes3 libxrender1 libxext6 \
+            libgl1 libegl1 libgles2 libglu1-mesa \
+            libsm6 libice6 libxkbcommon0 libvulkan1
+
+      - name: Render the example scene
+        run: blender -b -P scenes/example/build.py
+
+      - name: Assert the outputs Onklave collects actually exist
+        run: |
+          set -euo pipefail
+          test -s out/previews/01.png \
+            || { echo "::error::no preview image — the review strip would be empty"; exit 1; }
+          test -s out/scene.blend \
+            || { echo "::error::no scene file — no high-quality render could be offered"; exit 1; }
+          echo "preview: $(stat -c%s out/previews/01.png) bytes"
+          echo "scene:   $(stat -c%s out/scene.blend) bytes"
+
+      # A crash log means Blender gave up partway even if it exited 0.
+      - name: Assert Blender did not crash
+        run: |
+          if compgen -G "blender.crash.txt" > /dev/null; then
+            echo "::error::Blender wrote a crash log"
+            cat blender.crash.txt
+            exit 1
+          fi
+          echo "no crash log"
+
+      # So a human can SEE what the template produces on any given commit —
+      # the same thing the review loop does with an agent's run.
+      - name: Upload the render
+        uses: actions/upload-artifact@v4
+        with:
+          name: example-render
+          path: out/previews/

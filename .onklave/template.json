@@ -1,0 +1,6 @@
+{
+  "template": "onklave/template-blender-scene",
+  "version": "1.0.0",
+  "commit": "",
+  "comment": "Scaffolding provenance. A repo generated from this template keeps this file so drift is DETECTABLE — templates are scaffold-once, and without a marker a repo silently misses every later fix. Compare against the template's current version and read TEMPLATE_CHANGELOG.md for what to retrofit. Bump `version` and `commit` in the same commit that changes the template's contract."
+}

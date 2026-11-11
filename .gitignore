@@ -1,0 +1,23 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+.env
+.env.*
+!.env.example
+.DS_Store
+
+# Build outputs. THE rule of this template: a scene is its script, and
+# everything Blender produces from it is regenerated, never committed.
+# A .blend in git punishes every clone forever and cannot be reviewed.
+out/
+
+# Blender leftovers
+*.blend1
+*.blend2
+blender.crash.txt
